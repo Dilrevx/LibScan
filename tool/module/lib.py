@@ -3,8 +3,9 @@ import csv
 import os
 import datetime
 import hashlib
+from typing import Dict, Set
 
-from util import valid_method_name,deal_opcode_deq
+from util import valid_method_name, deal_opcode_deq
 
 from androguard.core.bytecodes.dvm import DalvikVMFormat
 from androguard.core.analysis.analysis import Analysis
@@ -15,30 +16,41 @@ from config import LOGGER
 # 设置一个类在过滤器中相同特征信息的记录次数上限
 filter_record_limit = 10
 # 为接口或抽象类中没有方法体的方法赋予权重值参与得分计算
-abstract_method_weight = 3 # 一般不调
+abstract_method_weight = 3  # 一般不调
+
 
 class ThirdLib(object):
+    """
+    A TPL parser based on Androguard.
+    Represents one TPL .dex
+    """
 
     def __init__(self, lib_path):
+        """
+        parse lib on construction
+        """
         # 库的基本信息
-        self.lib_name = None # 库文件名
-        self.lib_package_name = None # 库对应的唯一包名
+        self.lib_name = None  # 库文件名
+        self.lib_package_name = None  # 库对应的唯一包名
 
         # 后续用于匹配的库信息
         self.lib_opcode_num = int()  # 库中的opcode数量之和
-        self.classes_dict = dict() # 记录库中的所有类信息
+        self.classes_dict = dict()  # 记录库中的所有类信息
         self.nodes_dict = dict()  # 记录方法内的每一个节点信息
-        self.lib_method_num = int() # 记录库中所有方法数量
-        self.invoke_other_methodes = set() # 记录库中调用的所有方法
-        self.interface_lib = True # 记录当前库是否为纯接口库
+        self.lib_method_num = int()  # 记录库中所有方法数量
+        self.invoke_other_methodes = set()  # 记录库中调用的所有方法
+        self.interface_lib = True  # 记录当前库是否为纯接口库
 
         # 初始化ThirdLib对象时，解析lib对应的dex1文件
         LOGGER.debug("开始解析 %s ...", os.path.basename(lib_path))
         self._parse_lib(lib_path)
         LOGGER.debug("%s 解析完成", os.path.basename(lib_path))
 
-    # 读取obf_tpl_pkg.csv文件，根据库的显示名称确定库的真实包名
     def _parse_lib(self, lib_path):
+        """
+        加载 .dex，为每个 class 计算 class_filter，为每个 method 计算 method_opcode_seq
+        """
+
         time_start = datetime.datetime.now()
         try:
             dex_obj = DalvikVMFormat(read(lib_path))
@@ -65,26 +77,34 @@ class ThirdLib(object):
             class_name = cls.get_name().replace("/", ".")[1:-1]
             # print("处理类：", class_name)
 
-            class_name_short = class_name[class_name.rfind(".") + 1:]
+            class_name_short = class_name[class_name.rfind(".") + 1 :]
             if class_name_short.startswith("R$"):  # 不考虑资源类
                 continue
 
             class_info_list = []
             method_num = 0  # 记录类中参与匹配的方法数量
             class_opcode_num = 0  # 记录每个类中参与匹配的opcode个数
-            class_filter = {}  # 库类过滤器，临时记录库类中的各位信息，最后往库过滤器中合并
+            class_filter = (
+                {}
+            )  # 库类过滤器，临时记录库类中的各位信息，最后往库过滤器中合并。如 class/enum, abstract, static, 父类是否 Object 等
             class_method_md5_list = []
-            class_method_info_dict = {}
+            class_method_info_dict: Dict[str, list] = (
+                {}
+            )  # method_name -> [md5, opcode_seq, opcode_num, descriptor]
 
             # 获取并记录库类在布隆过滤器中的如下信息：是接口、是抽象类、是枚举类、是静态类、是final类、存在非Object父类
             super_class_name = cls.get_superclassname()
-            class_access_flags = cls.get_access_flags_string()
+            class_access_flags = cls.get_access_flags_string()  # final public
 
+            # 初始化 class_filter[int, bool]
             if class_access_flags == "0x0" or class_access_flags == "public":
                 class_filter[1] = 1
             elif class_access_flags.find("interface") != -1:
                 class_filter[2] = 1
-            elif class_access_flags.find("interface") == -1 and class_access_flags.find("abstract") != -1:
+            elif (
+                class_access_flags.find("interface") == -1
+                and class_access_flags.find("abstract") != -1
+            ):
                 class_filter[3] = 1
             elif class_access_flags.find("enum") != -1:
                 class_filter[4] = 1
@@ -96,15 +116,43 @@ class ThirdLib(object):
 
             # 获取并记录字段在过滤器中的位置信息
             # 定义类型字典
-            JAVA_BASIC_TYPR_DICT = {"B": 4, "S": 5, "I": 6, "J": 7, "F": 8, "D": 9, "Z": 10, "C": 11}
-            JAVA_BASIC_TYPR_ARR_DICT = {"[B": 13, "[S": 14, "[I": 15, "[J": 16, "[F": 17, "[D": 18, "[Z": 19, "[C": 20}
-            RETURN_JAVA_BASIC_TYPR_DICT = {"B": 4, "S": 5, "I": 6, "J": 7, "F": 8, "D": 9, "Z": 10, "C": 11, "V": 12}
+            JAVA_BASIC_TYPR_DICT = {
+                "B": 4,
+                "S": 5,
+                "I": 6,
+                "J": 7,
+                "F": 8,
+                "D": 9,
+                "Z": 10,
+                "C": 11,
+            }
+            JAVA_BASIC_TYPR_ARR_DICT = {
+                "[B": 13,
+                "[S": 14,
+                "[I": 15,
+                "[J": 16,
+                "[F": 17,
+                "[D": 18,
+                "[Z": 19,
+                "[C": 20,
+            }
+            RETURN_JAVA_BASIC_TYPR_DICT = {
+                "B": 4,
+                "S": 5,
+                "I": 6,
+                "J": 7,
+                "F": 8,
+                "D": 9,
+                "Z": 10,
+                "C": 11,
+                "V": 12,
+            }
 
             if len(cls.get_fields()) == 0:  # 无字段
                 class_filter[7] = 1
             else:
                 for EncodedField_obj in cls.get_fields():
-                    a = 1
+                    a = 1  # add_class_filter 的参数。这写的什么一坨 shit
 
                     field_access_flag = EncodedField_obj.get_access_flags_string()
                     field_des = EncodedField_obj.get_descriptor()
@@ -134,17 +182,22 @@ class ThirdLib(object):
 
             for method in cls.get_methods():
 
-                if method.full_name.find("<init>") != -1 or method.full_name.find("<clinit>") != -1:
+                if (
+                    method.full_name.find("<init>") != -1
+                    or method.full_name.find("<clinit>") != -1
+                ):
                     continue
 
                 # 定义方法的唯一标识名，需要避免方法重载的影响（重载的方法就是方法参数信息不同，其他都相同）
+                # 本来就是避免的...只是 validate
                 method_name = valid_method_name(method.full_name)
 
-                method_descriptor = ""
+                method_descriptor = (
+                    ""  # (static) return_type param_type1 param_type2 ...
+                )
 
                 # 在每个方法中获取并记录类在布隆过滤器中的如下信息：是否有方法final、是否有方法static、方法返回存在信息、方法参数存在信息
-                k = 1
-                # 在每个方法中获取并记录类在布隆过滤器中的如下信息：是否有方法final、是否有方法static、方法返回存在信息、方法参数存在信息
+                k = 1  # k is the identifier for static descriptor
                 method_access_flags = method.get_access_flags_string()
                 if method_access_flags.find("static") == -1:
                     k = 2
@@ -154,10 +207,10 @@ class ThirdLib(object):
                 # 每个方法设置两个整型值m,n，用来计算当前方法参数与返回值特征组合在布隆过滤器中的下标
                 method_info = method.get_descriptor()
                 # 记录方法返回值类型
-                method_return_value = method_info[method_info.rfind(")") + 1:]
+                method_return_value = method_info[method_info.rfind(")") + 1 :]
 
                 if method_return_value.startswith("Ljava/lang/Object;"):
-                    m = 1
+                    m = 1  # m is the identifier for return type
                     method_descriptor += "Ljava/lang/Object/ "
                 elif method_return_value.startswith("Ljava/lang/String"):
                     m = 2
@@ -182,12 +235,15 @@ class ThirdLib(object):
                     m = 23
                     method_descriptor += "Other "
 
-                # 记录方法参数类型
-                method_param_info = method_info[method_info.find("(") + 1:method_info.find(")")]
-                parm_info = {}
+                # 以下代码段处理并记录方法参数类型
+                method_param_info = method_info[
+                    method_info.find("(") + 1 : method_info.find(")")
+                ]
+
+                parm_info = {}  # 记录每一类型的参数是否存在
                 # 统计方法每个参数信息
                 if method_param_info == "":  # 方法无参数
-                    n = 1
+                    n = 1  # n is the identifier for parameter type
                 else:
                     method_param_des = []
                     for parm in method_param_info.split(" "):
@@ -208,7 +264,7 @@ class ThirdLib(object):
                     for parm in method_param_des:
                         method_descriptor = method_descriptor + parm + " "
 
-                    if len(parm_info) == 1:
+                    if len(parm_info) == 1:  # 又是依托迷惑代码
                         if 1 in parm_info:
                             n = 2
                         elif 2 in parm_info:
@@ -242,7 +298,9 @@ class ThirdLib(object):
                     else:
                         n = 16
 
-                self._add_class_filter(class_filter, 51 + (k - 1) * 368 + (m - 1) * 16 + n)
+                self._add_class_filter(
+                    class_filter, 51 + (k - 1) * 368 + (m - 1) * 16 + n
+                )
 
                 method_info_list = []
                 if method.full_name.startswith("Ljava"):
@@ -250,7 +308,9 @@ class ThirdLib(object):
 
                 bytecode_buff = dvm.get_bytecodes_method(dex_obj, analysis_obj, method)
 
-                method_opcodes = self._get_method_info(bytecode_buff, method_name, invoke_methodes)
+                method_opcodes = self._get_method_info(
+                    bytecode_buff, method_name, invoke_methodes
+                )
 
                 # if method_opcodes == "" or len(method_opcodes.split(" ")) > max_opcode_len:
                 #     continue
@@ -269,7 +329,9 @@ class ThirdLib(object):
                 class_method_md5_list.append(method_md5_value)
 
                 method_info_list.append(method_md5_value)
-                method_info_list.append(deal_opcode_deq(method_opcodes))# 存放的是方法内去重后的opcode序列
+                method_info_list.append(
+                    deal_opcode_deq(method_opcodes)
+                )  # 存放的是方法内去重后的opcode序列
                 method_info_list.append(method_opcode_num)
                 method_info_list.append(method_descriptor[:-1])
 
@@ -283,14 +345,20 @@ class ThirdLib(object):
             #     continue
 
             # 在分析完类中所有方法后，考虑当前类是接口或者抽象类的情况
-            if (class_access_flags.find("interface") != -1 or class_access_flags.find("abstract") != -1) \
-                    and len(class_method_info_dict) == 0:  # 从java8开始，抽象类或者接口中也可以有非抽象方法
+            if (
+                class_access_flags.find("interface") != -1
+                or class_access_flags.find("abstract") != -1
+            ) and len(
+                class_method_info_dict
+            ) == 0:  # 从java8开始，抽象类或者接口中也可以有非抽象方法
                 # 添加apk接口或抽象类中的方法数量，注意此时类值列表长度为1，而不是5
                 class_info_list = [len(cls.get_methods()), class_filter]
-                self.classes_dict[cls.get_name().replace("/", ".")[1:-1]] = class_info_list
+                self.classes_dict[cls.get_name().replace("/", ".")[1:-1]] = (
+                    class_info_list
+                )
                 # 接口或者抽象类中的方法也统计在lib_method_num、lib_opcode_num中
                 self.lib_method_num += len(cls.get_methods())
-                self.lib_opcode_num += (len(cls.get_methods()) * abstract_method_weight)
+                self.lib_opcode_num += len(cls.get_methods()) * abstract_method_weight
                 continue
 
             if len(class_method_info_dict) == 0:
@@ -321,8 +389,11 @@ class ThirdLib(object):
         # 找出库中调用的所有非库中的方法名称
         invoke_other_methodes = set()
         for invoke_method in invoke_methodes:
-            invoke_class = invoke_method[:invoke_method.rfind(".")]
-            if invoke_method + "_1" not in self.nodes_dict and invoke_class not in self.classes_dict:
+            invoke_class = invoke_method[: invoke_method.rfind(".")]
+            if (
+                invoke_method + "_1" not in self.nodes_dict
+                and invoke_class not in self.classes_dict
+            ):
                 invoke_other_methodes.add(invoke_method)
         self.invoke_other_methodes = invoke_other_methodes
 
@@ -332,9 +403,13 @@ class ThirdLib(object):
         extract_info_time = time_end - time_start
         LOGGER.debug("解析库完成，用时：%d", extract_info_time.seconds)
 
-    def _get_lib_name(self):
+    def _get_lib_name(self) -> str:
+        """
+        读取 lib_name_map.csv ，根据库的显示名称确定库的真实包名，并替换 /
+        """
+
         lib = self.lib_name
-        lib_name_version = lib[:lib.rfind("-")]
+        lib_name_version = lib[: lib.rfind("-")]
 
         csv_reader = csv.reader(open("conf/lib_name_map.csv", encoding="utf-8"))
         csv_reader = list(csv_reader)
@@ -350,37 +425,55 @@ class ThirdLib(object):
         return lib_name_dict[lib_name_version].replace("/", ".")
 
     # 获取每个方法的opcode序列字符串
-    def _get_method_info(self, bytecode_buff, inter_method_name, invoke_methodes):
-        method_opcode_seq = ""  # 记录当前方法的opcode序列
+    def _get_method_info(
+        self, bytecode_buff: str, inter_method_name: str, invoke_methodes: Set[str]
+    ) -> str:
+        """
+        `bytecode_buff` 是反汇编的文本，类似 jeb，标识了基本块信息，地址，指令
+        `inter_method_name` 是 validate 后的方法名
+        `invoke_methodes` 即对象的成员，维护 invoke 的 callee
+
+        遍历反汇编指令，解析其中的 invoke 并维护 self.node 信息. （node 是以 invoke 分割的代码段）
+
+        return: method_opcode_seq，形如 "op1 op2 op3" 的反汇编指令序列
+        """
+        method_opcode_seq = ""  # 记录当前方法的opcode序列，形如 "op1 op2 op3"
         num = 1  # 标记方法的第几个节点
         node_opcode_seq = ""  # 记录当前节点的opcode序列
 
         line_s = bytecode_buff.split("\n")
         for line in line_s:
-            if line != "" and line.startswith("\t") and (not line.startswith("	(")) and len(line.strip()) > 20:
-                # 获取当前行的opcode
+            if (
+                line != ""
+                and line.startswith("\t")
+                and (not line.startswith("	("))
+                and len(line.strip()) > 20
+            ):
+                # 获取当前行的opcode，添加到 method 和 node 的 seq
                 line = line.strip()
-                templine = line[line.find(")") + 2:]
+                templine = line[line.find(")") + 2 :]
                 if templine.find(" ") != -1:
-                    dvmopcode = templine[:templine.find(" ")]
+                    dvmopcode = templine[: templine.find(" ")]
                 else:
                     dvmopcode = templine
 
                 if dvmopcode.find(":") == -1 and dvmopcode != "":
                     if dvmopcode.endswith("-payload"):  # fill-array-data-payload
-                        dvmopcode = dvmopcode[:dvmopcode.rfind("-")]
+                        dvmopcode = dvmopcode[: dvmopcode.rfind("-")]
 
                     if dvmopcode.find("/") != -1:
-                        dvmopcode = dvmopcode[:dvmopcode.find("/")]
-                    if not dvmopcode.startswith("move") and dvmopcode != "nop":  # 混淆过程，会移除掉库方法中的某些move指令
+                        dvmopcode = dvmopcode[: dvmopcode.find("/")]
+                    if (
+                        not dvmopcode.startswith("move") and dvmopcode != "nop"
+                    ):  # 混淆过程，会移除掉库方法中的某些move指令
                         method_opcode_seq = method_opcode_seq + dvmopcode + " "
                         node_opcode_seq = node_opcode_seq + dvmopcode + " "
 
                 if line.find("invoke") != -1:
-                    invoke_info = line[line.find("L"):]
+                    invoke_info = line[line.find("L") :]
                     method_info = invoke_info.replace("->", " ").replace("(", " (")
 
-                    if method_info.startswith("Ljava"):
+                    if method_info.startswith("Ljava"):  # ignore stdlib
                         continue
 
                     node_info = [node_opcode_seq[:-1]]
@@ -399,10 +492,11 @@ class ThirdLib(object):
 
     # 将指定元素加入类过滤器中
     def _add_class_filter(self, class_filter, index):
+        """
+        class_filter[index]++, cut to filter_record_limit
+        """
         index_num = class_filter.get(index, 0)
         count = index_num + 1
         if count > filter_record_limit:
             count = filter_record_limit
         class_filter[index] = count
-
-
