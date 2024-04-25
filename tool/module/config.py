@@ -11,13 +11,15 @@ max_thread_num = multiprocessing.cpu_count()
 detect_type = "lib_version"
 
 # class similarity threshold (theta)
-class_similar = 0.7
+class_similar = 0.5
 # lib similarity threahold (theta2)
 lib_similar = 0.85
 
 # Global log configuration (INFO mode by default. Will output the phase-level matching results into log file when using DEBUG mode
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - [%(lineno)d] - %(message)s',
-                    filename="log.txt",
-                    filemode="a+")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - [%(lineno)d] - %(message)s",
+    filename="log.txt",
+    filemode="a+",
+)
 LOGGER = logging.getLogger("console")
