@@ -3,7 +3,7 @@ import csv
 import os
 import datetime
 import hashlib
-from typing import Dict, Set
+from typing import Dict, List, Set, Tuple
 
 from util import valid_method_name, deal_opcode_deq
 
@@ -35,10 +35,14 @@ class ThirdLib(object):
 
         # 后续用于匹配的库信息
         self.lib_opcode_num = int()  # 库中的opcode数量之和
-        self.classes_dict = dict()  # 记录库中的所有类信息
-        self.nodes_dict = dict()  # 记录方法内的每一个节点信息
+        self.classes_dict: Dict[str, Tuple[str, int, int, Dict, Dict[str, list]]] = dict()  # 记录库中的所有类信息. str -> hash, method_num, cls_opcode_num, class_filter, cls_method_info_dict
+        self.nodes_dict: Dict[str, Tuple[str, str]] = (
+            dict()
+        )  # 记录方法内的每一个节点信息, Dict[$method_name_$node_num -> (opcode_seq, callee_name)]
         self.lib_method_num = int()  # 记录库中所有方法数量
-        self.invoke_other_methodes = set()  # 记录库中调用的所有方法
+        self.invoke_other_methodes: Set[str] = (
+            set()
+        )  # 记录库中调用的所有方法（其他的库中 callee 方法名）
         self.interface_lib = True  # 记录当前库是否为纯接口库
 
         # 初始化ThirdLib对象时，解析lib对应的dex1文件
@@ -393,7 +397,7 @@ class ThirdLib(object):
             if (
                 invoke_method + "_1" not in self.nodes_dict
                 and invoke_class not in self.classes_dict
-            ):
+            ):  # 没有该 node 且 ?
                 invoke_other_methodes.add(invoke_method)
         self.invoke_other_methodes = invoke_other_methodes
 

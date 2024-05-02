@@ -1,0 +1,60 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            // "args": "detect_all -o outputs -af /tmp/tmpa0uqz1ct -lf libs -ld libs_dex",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Python Debugger: LibScan",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "LibScan.py",
+            "console": "integratedTerminal",
+            "args": [
+                "detect_all",
+                "-o",
+                "/home/li/LibScan/result/debugger",
+                "-af",
+                "/data/phunter/issta23-artifact/dataset/apps_all_option/origin",
+                "-lf",
+                "/home/li/LibScan/data/vulnerability_libs",
+                "-ld",
+                "/home/li/LibScan/data/vulnerability_libs_dex.mybuild",
+                "-p",
+                "2"
+            ],
+            "cwd": "/home/li/LibScan/tool",
+            "env": {
+                "PATH": "${env:PATH}:/home/li/LibScan/tool/module/dex2jar"
+            }
+        },
+        {
+            "name": "Python Debugger: LibScan-demo",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "LibScan.py",
+            "console": "integratedTerminal",
+            "args": [
+                "detect_all",
+                "-o",
+                "/home/li/LibScan/result/debugger",
+                "-af",
+                "/home/li/LibScan/tmp/apk",
+                "-lf",
+                "/home/li/LibScan/data/phunter.adapt.test",
+                "-ld",
+                "/home/li/LibScan/data/phunter.adapt.test.dex"
+            ],
+            "cwd": "/home/li/LibScan/tool",
+            "env": {
+                "PATH": "${env:PATH}:/home/li/LibScan/tmp/dex-tools-v2.4"
+            }
+        }
+    ]
+}

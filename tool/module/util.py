@@ -26,9 +26,9 @@ def read_file_to_list(path, mode="r", encoding="utf-8"):
     return lines_list
 
 
-def split_list_n_list(origin_list, n):
+def split_list_n_list(origin_list: list, n):
     """
-    将一个列表均分为n个
+    将一个列表均分为n个，返回 [[0 : period - 1], [period - 1 : 2 period - 1], ...]
     """
     if len(origin_list) % n == 0:
         cnt = len(origin_list) // n
