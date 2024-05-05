@@ -1019,7 +1019,7 @@ def search_libs_in_app(
     """
     :global_lib_info_dict: Dict[str, ThirdLib] . 全局共享变量，用作 cache。记录每个库的反编译结果。eg. {<filename>.dex: Object}
     :shared_lock_lib_info: Lock . lib_info_dict 的锁，草并不是 lock 这玩意的，是 lock methods_jar.txt 的
-    :global_dependence_relation: List[Tuple] . 全局共享变量，记录所有分析库中的依赖关系（包名）。eg. [(<pkg>, <pkg>), (<>,<>),...]
+    :global_dependence_relation: List[Tuple] . 全局共享变量，记录所有分析库中的依赖关系（包名）。eg. [(<caller pkg>, <callee pkg>), (<>,<>),...]
     :global_dependence_libs: List[str] . 全局共享变量，记录所有分析库中存在依赖关系的库列表。eg. [<caller>, <callee>]
     :shared_lock_dependence_info: Lock . dependence_relation 的锁
     :loop_dependence_libs: List[str] . 存在循环依赖的库列表。根据前面的共享变量算出来的 eg.  ['ezvcard', 'org.slf4j','ch.qos.logback.classic']
