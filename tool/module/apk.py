@@ -2,9 +2,10 @@
 import os
 import datetime
 import hashlib
+from typing import Dict
 
 from config import LOGGER
-from util import valid_method_name,deal_opcode_deq,toMillisecond
+from util import valid_method_name, deal_opcode_deq, toMillisecond
 
 from androguard.core.bytecodes.apk import APK
 from androguard.core.bytecodes.dvm import DalvikVMFormat
@@ -14,16 +15,19 @@ from androguard.core.bytecodes import dvm
 # 设置一个类在过滤器中相同特征信息的记录次数上限
 filter_record_limit = 10
 
+
 class Apk(object):
 
     def __init__(self, apk_path):
         # 库的基本信息
-        self.apk_name = None # 库文件名
+        self.apk_name = None  # 库文件名
 
         # 后续用于匹配的库信息
-        self.classes_dict = dict() # 记录apk中的所有类信息
+        self.classes_dict = dict()  # 记录apk中的所有类信息
         self.nodes_dict = dict()  # 记录方法内的每一个节点信息
-        self.app_filter = dict() # 应用程序过滤器，记录app类中包含的一些特征信息
+        self.app_filter: Dict[Dict[bool, str]] = (
+            dict()
+        )  # 应用程序过滤器，记录app类中包含的一些特征信息
 
         # 初始化ThirdLib对象时，解析lib对应的dex1文件
         LOGGER.debug("开始解析 %s ...", os.path.basename(apk_path))
@@ -53,7 +57,7 @@ class Apk(object):
 
             for cls in dex_obj.get_classes():
                 class_name = cls.get_name().replace("/", ".")[1:-1]
-                class_name_short = class_name[class_name.rfind(".") + 1:]
+                class_name_short = class_name[class_name.rfind(".") + 1 :]
                 if class_name_short.startswith("R$"):  # 不考虑资源类
                     continue
 
@@ -73,7 +77,10 @@ class Apk(object):
                     class_filter[1] = 1
                 elif class_access_flags.find("interface") != -1:
                     class_filter[2] = 1
-                elif class_access_flags.find("interface") == -1 and class_access_flags.find("abstract") != -1:
+                elif (
+                    class_access_flags.find("interface") == -1
+                    and class_access_flags.find("abstract") != -1
+                ):
                     class_filter[3] = 1
                 elif class_access_flags.find("enum") != -1:
                     class_filter[4] = 1
@@ -84,9 +91,37 @@ class Apk(object):
 
                 # 获取并记录字段在布隆过滤器中的如下信息：有final、无final、有static、无static、java引用类型字段、Android引用类型字段、java基本类型字段（8种）、其他引用类型字段
                 # 定义类型字典
-                JAVA_BASIC_TYPR_DICT = {"B": 4, "S": 5, "I": 6, "J": 7, "F": 8, "D": 9, "Z": 10, "C": 11}
-                JAVA_BASIC_TYPR_ARR_DICT = {"[B": 13, "[S": 14, "[I": 15, "[J": 16, "[F": 17, "[D": 18, "[Z": 19, "[C": 20}
-                RETURN_JAVA_BASIC_TYPR_DICT = {"B": 4, "S": 5, "I": 6, "J": 7, "F": 8, "D": 9, "Z": 10, "C": 11, "V": 12}
+                JAVA_BASIC_TYPR_DICT = {
+                    "B": 4,
+                    "S": 5,
+                    "I": 6,
+                    "J": 7,
+                    "F": 8,
+                    "D": 9,
+                    "Z": 10,
+                    "C": 11,
+                }
+                JAVA_BASIC_TYPR_ARR_DICT = {
+                    "[B": 13,
+                    "[S": 14,
+                    "[I": 15,
+                    "[J": 16,
+                    "[F": 17,
+                    "[D": 18,
+                    "[Z": 19,
+                    "[C": 20,
+                }
+                RETURN_JAVA_BASIC_TYPR_DICT = {
+                    "B": 4,
+                    "S": 5,
+                    "I": 6,
+                    "J": 7,
+                    "F": 8,
+                    "D": 9,
+                    "Z": 10,
+                    "C": 11,
+                    "V": 12,
+                }
                 if len(cls.get_fields()) == 0:  # 无字段
                     class_filter[7] = 1
                 else:
@@ -122,7 +157,10 @@ class Apk(object):
 
                 for method in cls.get_methods():
 
-                    if method.full_name.find("<init>") != -1 or method.full_name.find("<clinit>") != -1:
+                    if (
+                        method.full_name.find("<init>") != -1
+                        or method.full_name.find("<clinit>") != -1
+                    ):
                         continue
 
                     method_descriptor = ""
@@ -137,7 +175,7 @@ class Apk(object):
                     # 每个方法设置两个整型值m,n，用来计算当前方法参数与返回值特征组合在布隆过滤器中的下标
                     method_info = method.get_descriptor()
                     # 记录方法返回值类型
-                    method_return_value = method_info[method_info.rfind(")") + 1:]
+                    method_return_value = method_info[method_info.rfind(")") + 1 :]
 
                     if method_return_value.startswith("Ljava/lang/Object;"):
                         m = 1
@@ -150,14 +188,18 @@ class Apk(object):
                         method_descriptor += "Ljava/ "
                     elif method_return_value in RETURN_JAVA_BASIC_TYPR_DICT:
                         m = RETURN_JAVA_BASIC_TYPR_DICT[method_return_value]
-                        method_descriptor = method_descriptor + method_return_value + " "
+                        method_descriptor = (
+                            method_descriptor + method_return_value + " "
+                        )
                     # 返回值为数组类型
                     elif method_return_value.startswith("[Ljava/"):
                         m = 13
                         method_descriptor += "[Ljava/ "
                     elif method_return_value in JAVA_BASIC_TYPR_ARR_DICT:
                         m = JAVA_BASIC_TYPR_ARR_DICT[method_return_value] + 1
-                        method_descriptor = method_descriptor + method_return_value + " "
+                        method_descriptor = (
+                            method_descriptor + method_return_value + " "
+                        )
                     elif method_return_value.startswith("["):
                         m = 22
                         method_descriptor += "Array "
@@ -165,7 +207,9 @@ class Apk(object):
                         m = 23
                         method_descriptor += "Other "
                     # 记录方法参数类型
-                    method_param_info = method_info[method_info.find("(") + 1:method_info.find(")")]
+                    method_param_info = method_info[
+                        method_info.find("(") + 1 : method_info.find(")")
+                    ]
                     parm_info = {}
                     # 统计方法每个参数信息
                     if method_param_info == "":  # 方法无参数
@@ -224,7 +268,9 @@ class Apk(object):
                             n = 16
 
                     # 将类中方法信息加入类过滤器中
-                    self._add_class_filter(class_filter, 51 + (k - 1) * 368 + (m - 1) * 16 + n)
+                    self._add_class_filter(
+                        class_filter, 51 + (k - 1) * 368 + (m - 1) * 16 + n
+                    )
 
                     method_name = valid_method_name(method.full_name)
 
@@ -256,7 +302,9 @@ class Apk(object):
                     class_method_md5_list.append(method_md5_value)
 
                     method_info_list.append(method_md5_value)
-                    method_info_list.append(deal_opcode_deq(method_opcodes))# 存放的是方法内去重后的opcode序列
+                    method_info_list.append(
+                        deal_opcode_deq(method_opcodes)
+                    )  # 存放的是方法内去重后的opcode序列
                     method_info_list.append(method_opcode_num)
                     method_info_list.append(method_descriptor[:-1])
 
@@ -272,11 +320,17 @@ class Apk(object):
                 #     continue
 
                 # 在分析完类中所有方法后，考虑当前类是接口或者抽象类的情况
-                if (class_access_flags.find("interface") != -1 or class_access_flags.find("abstract") != -1)\
-                        and len(class_method_info_dict) == 0: # 从java8开始，抽象类或者接口中也可以有非抽象方法
+                if (
+                    class_access_flags.find("interface") != -1
+                    or class_access_flags.find("abstract") != -1
+                ) and len(
+                    class_method_info_dict
+                ) == 0:  # 从java8开始，抽象类或者接口中也可以有非抽象方法
                     # 添加apk接口或抽象类中的方法数量，注意此时类值列表长度为1，而不是5
                     class_info_list = [len(cls.get_methods())]
-                    self.classes_dict[cls.get_name().replace("/", ".")[1:-1]] = class_info_list
+                    self.classes_dict[cls.get_name().replace("/", ".")[1:-1]] = (
+                        class_info_list
+                    )
                     continue
 
                 if len(class_method_info_dict) == 0:
@@ -297,7 +351,9 @@ class Apk(object):
                 class_info_list.append(class_opcode_num)
                 class_info_list.append(class_method_info_dict)
 
-                self.classes_dict[cls.get_name().replace("/", ".")[1:-1]] = class_info_list
+                self.classes_dict[cls.get_name().replace("/", ".")[1:-1]] = (
+                    class_info_list
+                )
 
         time_end = datetime.datetime.now()
         LOGGER.debug("解析apk完成，用时：%d ms", toMillisecond(time_start, time_end))
@@ -310,27 +366,34 @@ class Apk(object):
 
         line_s = bytecode_buff.split("\n")
         for line in line_s:
-            if line != "" and line.startswith("\t") and (not line.startswith("	(")) and len(line.strip()) > 20:
+            if (
+                line != ""
+                and line.startswith("\t")
+                and (not line.startswith("	("))
+                and len(line.strip()) > 20
+            ):
                 # 获取当前行的opcode
                 line = line.strip()
-                templine = line[line.find(")") + 2:]
+                templine = line[line.find(")") + 2 :]
                 if templine.find(" ") != -1:
-                    dvmopcode = templine[:templine.find(" ")]
+                    dvmopcode = templine[: templine.find(" ")]
                 else:
                     dvmopcode = templine
 
                 if dvmopcode.find(":") == -1 and dvmopcode != "":
                     if dvmopcode.endswith("-payload"):  # fill-array-data-payload
-                        dvmopcode = dvmopcode[:dvmopcode.rfind("-")]
+                        dvmopcode = dvmopcode[: dvmopcode.rfind("-")]
 
                     if dvmopcode.find("/") != -1:
-                        dvmopcode = dvmopcode[:dvmopcode.find("/")]
-                    if not dvmopcode.startswith("move") and dvmopcode != "nop":  # 混淆过程，会移除掉库方法中的某些move指令
+                        dvmopcode = dvmopcode[: dvmopcode.find("/")]
+                    if (
+                        not dvmopcode.startswith("move") and dvmopcode != "nop"
+                    ):  # 混淆过程，会移除掉库方法中的某些move指令
                         method_opcode_seq = method_opcode_seq + dvmopcode + " "
                         node_opcode_seq = node_opcode_seq + dvmopcode + " "
 
                 if line.find("invoke") != -1:
-                    invoke_info = line[line.find("L"):]
+                    invoke_info = line[line.find("L") :]
                     method_info = invoke_info.replace("->", " ").replace("(", " (")
 
                     if method_info.startswith("Ljava"):
@@ -356,9 +419,11 @@ class Apk(object):
             count = filter_record_limit
         class_filter[index] = count
 
-     # 将app中的类名添加到布隆过滤器中合适位置里的集合中
+    # 将app中的类名添加到布隆过滤器中合适位置里的集合中
     def _add_filter(self, class_name, index, num):
-        contain_list = self.app_filter.get(index, [set() for i in range(filter_record_limit)])
+        contain_list = self.app_filter.get(
+            index, [set() for i in range(filter_record_limit)]
+        )
         set_index = int(num) - 1
         if set_index > filter_record_limit:
             set_index = filter_record_limit
@@ -366,6 +431,3 @@ class Apk(object):
         class_set.add(class_name)
         contain_list.insert(set_index, class_set)
         self.app_filter[index] = contain_list
-
-
-
