@@ -282,13 +282,26 @@ def get_lib_info(
 
 
 # 对当前app类通过布隆过滤器进行过滤，返回满足过滤条件的类集合
-def deal_bloom_filter(lib_class_name, lib_classes_dict, app_filter):
+def deal_bloom_filter(
+    lib_class_name,
+    lib_classes_dict: Dict[str, Tuple[str, int, int, Dict[int, int], Dict[str, list]]],
+    app_filter: Dict[str, Tuple[Set[str], Set, Set, Set, Set, Set, Set, Set, Set, Set]],
+) -> Set[str]:
+    """
+    :lib_classes_dict: 记录库中的所有类信息. str -> hash, method_num, cls_opcode_num, class_filter, cls_method_info_dict. 当 cls 是 interface 时，-> cls_method_num, class_filter. 其中 cls_filter maps int -> bool
+    :app_filter: class_filter 的特征编号 -> [Set[class_names]] * 10. value 的 index 表示 count -1 个 特征的类集合
+
+
+    过滤库中由 cls_name 指定的 cls 中，与 apk 特征匹配的 methods。
+
+    返回 Set[class_names] eg. {"org.apache.commons.collections4.Equator"}
+    """
     if len(lib_classes_dict[lib_class_name]) == 2:  # 说明当前是一个接口或者抽象类
         lib_class_bloom_info = lib_classes_dict[lib_class_name][1]
     else:
         lib_class_bloom_info = lib_classes_dict[lib_class_name][3]
 
-    satisfy_classes = set()
+    satisfy_classes: Set[str] = set()
     satisfy_count = 0
 
     for index in lib_class_bloom_info:
@@ -649,18 +662,21 @@ def fine_match(apk_obj, lib_obj, lib_class_match_dict, opcode_dict):
     return lib_class_match_result
 
 
-def detect(apk_obj: Apk, lib_obj: ThirdLib) -> Dict:
+def detect(
+    apk_obj: Apk, lib_obj: ThirdLib
+) -> Dict[str, Tuple[str, str, str, str, str]]:
     """
     检测apk中包含的库信息
     :param apk_obj: 构建的apk对象
     :param lib: 库名称
     :param lib_obj: 构建的库对象
-    :return: 返回检测结果的字典
+    :return: 返回检测结果<文件名>:<检测结果> 的映射，检测结果为 (库得分，库得分与方法数壁纸，细粒度匹配的操作码个数，库操作码个数，两个 opcode 数的比)
     """
     if len(lib_obj.classes_dict) == 0:
         return {}
 
     # 获取库对象中的信息
+    # str -> hash, method_num, cls_opcode_num, class_filter, cls_method_info_dict
     lib_opcode_num = lib_obj.lib_opcode_num
     lib_classes_dict = lib_obj.classes_dict
 
@@ -668,7 +684,7 @@ def detect(apk_obj: Apk, lib_obj: ThirdLib) -> Dict:
     opcode_dict = get_opcode_coding("conf/opcodes_encoding.txt")
 
     # 用于存放检测结果
-    result = {}
+    result: Dict[str, Tuple[str, str, str, str, str]] = {}
     # 需要统计的信息
     # 布隆过滤器平均过滤率
     avg_filter_rate = 0
@@ -815,9 +831,12 @@ def detect(apk_obj: Apk, lib_obj: ThirdLib) -> Dict:
         result[lib_obj.lib_name] = temp_list
     LOGGER.info(
         (
-            "细粒度匹配库 %s，匹配率：%f，" + "成功"
-            if final_match_opcodes / lib_opcode_num >= min_lib_match
-            else "失败"
+            "细粒度匹配库 %s，匹配率：%f，"
+            + (
+                "成功"
+                if final_match_opcodes / lib_opcode_num >= min_lib_match
+                else "失败"
+            )
         ),
         lib_obj.lib_name,
         final_match_opcodes / lib_opcode_num,
@@ -830,15 +849,23 @@ def detect(apk_obj: Apk, lib_obj: ThirdLib) -> Dict:
 def detect_lib(
     libs_name: List[str],
     apk_obj: Apk,
-    methodes_jar: Dict,
+    methodes_jar: Dict[str, str],
     global_jar_dict: Dict[str, List[str]],
-    global_finished_jar_dict: Dict,
-    global_running_jar_list: List,
+    global_finished_jar_dict: Dict[str, Tuple[str, float]],
+    global_running_jar_list: List[str],
     shared_lock_libs,
     global_lib_info_dict: Dict[str, ThirdLib],
     loop_dependence_libs,
-) -> Tuple[Dict[Apk, ThirdLib], bool]:
+) -> Tuple[Dict[Apk, Tuple[str, str, str, str, str]], bool]:
     """
+    :global_jar_dict: Dict[str, List[str]]. 记录同个包不同版本 <包名>:<文件名> 的映射
+    :global_finished_jar_dict: Dict[str, Tuple[str, float]]. 记录 <文件名>:<检测结果> 的映射，检测结果为 （库包名，库得分）
+    :global_running_jar_list: List[str]. 记录正在检测的库
+    :global_lib_info_dict: Dict[str, ThirdLib]. 记录 <文件名>.dex:<库对象>
+
+    检测 apk_obj 中包含的 TPL 信息，使用 methodes_jar, global_lib_info_dict, loop_dependence_libs
+
+
     Li: Seems to be the core detection function
     """
     result = {}  # 记录当前库所有版本检测结果
@@ -896,10 +923,10 @@ def get_lib_version(result_dict):
 def sub_detect_lib(
     process_name,
     global_jar_dict: Dict[str, List[str]],
-    global_finished_jar_dict: Dict,
-    global_running_jar_list: List,
+    global_finished_jar_dict: Dict[str, Tuple[str, float]],
+    global_running_jar_list: List[str],
     shared_lock_libs,
-    global_libs_info_dict: Dict,  # 检测结果？
+    global_libs_info_dict: Dict[str, Tuple[str, str, str, str, str]],
     shared_lock_libs_info,
     apk_obj: Apk,
     methodes_jar: Dict[str, str],
@@ -908,10 +935,13 @@ def sub_detect_lib(
 ):
     """
     :global_jar_dict: Dict[str, List[str]]. 记录同个包不同版本 <包名>:<文件名> 的映射
-    :global_libs_info_dict: Dict[str, List[str]]. 记录 <文件名>:<检测结果> 的映射
+    :global_finished_jar_dict: Dict[str, Tuple[str, float]]. 记录 <文件名>:<检测结果> 的映射，检测结果为 （库包名，库得分）
+    :global_running_jar_list: List[str]. 记录正在检测的库
+    :global_libs_info_dict: Dict[str, Tuple[str, str, str]]. 记录 <文件名>:<检测结果> 的映射，检测结果为 (库得分，库得分与方法数壁纸，细粒度匹配的操作码个数，库操作码个数，两个 opcode 数的比)
 
+    检测 apk_obj 中包含的 TPL 信息，使用 methodes_jar, global_lib_info_dict, loop_dependence_libs
 
-    global_jar_dict.keys() 对应不同的包。每个包
+    global_jar_dict.keys() 对应不同的包。每个包不同版本被归类到统一项
     """
 
     while len(global_jar_dict) > 0:
@@ -1142,18 +1172,20 @@ def search_libs_in_app(
             LOGGER.error("apk文件解析失败：%s", os.path.join(apk_folder, apk), e)
             continue
 
-        # 定义全局分析完成的jar名字典（键为库的唯一标志名，值为该库被检测出的具体版本）
-        global_finished_jar_dict = multiprocessing.Manager().dict()
+        # 定义全局分析完成的jar名字典（键为库的唯一标志名，值为该库被检测出的具体版本，(包名'.', ' and ', acc)）
+        global_finished_jar_dict: Dict[str, Tuple[str, float]] = (
+            multiprocessing.Manager().dict()
+        )
         # 定义全局正在分析列表（包含每一个正在分析的库的唯一标识）
-        global_running_jar_list = multiprocessing.Manager().list()
+        global_running_jar_list: List[str] = multiprocessing.Manager().list()
         # 定义全局检测结果详细信息列表（记录每个被检测为包含的库版本详细信息，用于最后输出）
-        global_libs_info_dict = multiprocessing.Manager().dict()
+        global_libs_info_dict: Dict = multiprocessing.Manager().dict()
 
         # 为三个全局的数据结构定义一把锁
         shared_lock_libs = multiprocessing.Manager().Lock()
         shared_lock_libs_info = multiprocessing.Manager().Lock()
 
-        # 定义全局待分析所有jar名字典（键为库唯一标识名，值为列表，包含该库所有版本jar名）
+        # 定义全局待分析所有jar名字典（键为库唯一标识名，值为列表，包含该库所有版本jar名）测试完成的包会删除
         global_jar_dict: Dict[str, List[str]] = (
             multiprocessing.Manager().dict()
         )  # pkg -> [filenames, ...]

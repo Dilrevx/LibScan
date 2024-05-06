@@ -2,7 +2,7 @@
 import os
 import datetime
 import hashlib
-from typing import Dict
+from typing import Dict, Set, Tuple
 
 from config import LOGGER
 from util import valid_method_name, deal_opcode_deq, toMillisecond
@@ -25,9 +25,11 @@ class Apk(object):
         # 后续用于匹配的库信息
         self.classes_dict = dict()  # 记录apk中的所有类信息
         self.nodes_dict = dict()  # 记录方法内的每一个节点信息
-        self.app_filter: Dict[Dict[bool, str]] = (
+        self.app_filter: Dict[
+            str, Tuple[Set[str], Set, Set, Set, Set, Set, Set, Set, Set, Set]
+        ] = (
             dict()
-        )  # 应用程序过滤器，记录app类中包含的一些特征信息
+        )  # 应用程序过滤器，记录app类中包含的一些特征信息。特征编号 -> List[Set[类名]], len(list) = filter_record_limit
 
         # 初始化ThirdLib对象时，解析lib对应的dex1文件
         LOGGER.debug("开始解析 %s ...", os.path.basename(apk_path))
