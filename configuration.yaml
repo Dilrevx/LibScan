@@ -1,0 +1,20 @@
+libscan:
+  path: /home/li/LibScan/tool
+  env:
+    # dex_tools_path: "/home/li/LibScan/tool/module/dex2jar"
+    dex_tools_path: "/home/li/LibScan/tmp/dex-tools-v2.4"
+  
+  args:
+    mode: detect_all
+    # output_folder:                 "/home/li/LibScan/result/debugger"
+    # apk_folder:                   "/data/phunter/issta23-artifact/dataset/apps_all_option/origin"
+
+    # lib_folder:                   "/home/li/LibScan/data/vulnerability_libs"
+    # lib_folder_dex:               "/home/li/LibScan/data/vulnerability_libs_dex.mybuild"
+    lib_folder:                   "/home/li/LibScan/data/phunter.adapt.test"
+    lib_folder_dex:               "/home/li/LibScan/data/phunter.adapt.test.dex"
+    process_num:                  2
+phunter:
+  path: /home/li/PHunter
+dataset:
+  CVEs2libsMapping: /home/li/LibScan/tmp/CVEs2libsMapping.json
