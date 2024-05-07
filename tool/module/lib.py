@@ -41,7 +41,7 @@ class ThirdLib(object):
         ] = (
             dict()
         )  # 记录库中的所有类信息. str -> hash, method_num, cls_opcode_num, class_filter, cls_method_info_dict. 当 cls 是 interface 时，-> cls_method_num, class_filter
-        self.nodes_dict: Dict[str, Tuple[str, str]] = (
+        self.nodes_dict: Dict[str, List[str]] = (
             dict()
         )  # 记录方法内的每一个节点信息, Dict[$method_name_$node_num -> (opcode_seq, callee_name)]
         self.lib_method_num = int()  # 记录库中所有方法数量

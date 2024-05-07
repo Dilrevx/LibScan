@@ -2,7 +2,7 @@
 import os
 import datetime
 import hashlib
-from typing import Dict, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 from config import LOGGER
 from util import valid_method_name, deal_opcode_deq, toMillisecond
@@ -28,7 +28,7 @@ class Apk(object):
         ] = (
             dict()
         )  # 记录apk中的所有类信息. hash, method_num, cls_opcode_num,  cls_method_info_dict. interface 的 len = 1
-        self.nodes_dict = dict()  # 记录方法内的每一个节点信息
+        self.nodes_dict: Dict[str, List[str]] = dict()  # 记录方法内的每一个节点信息
         self.app_filter: Dict[
             str, Tuple[Set[str], Set, Set, Set, Set, Set, Set, Set, Set, Set]
         ] = (

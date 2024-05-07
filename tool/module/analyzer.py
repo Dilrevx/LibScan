@@ -558,8 +558,17 @@ def coarse_match(
 # 递归的获取当前方法的完整opcode执行序列，算法：在二叉树上的中、右、左遍历（为了避免循环调用对当前方法的影响，删除会循环调用边）
 # 注意：并不是调用路径中一个方法只能出现一次，只要不会出现循环调用，可以多次调用同一个方法，比如某个tool方法，设置route_node_list来记录。
 def get_method_action(
-    node, node_dict, method_action_dict, route_method_set, invoke_length
-):
+    node: str,
+    node_dict: Dict[str, List[str]],
+    method_action_dict: Dict[str, str],
+    route_method_set: Set[str],
+    invoke_length: int,
+) -> str:
+    """
+    递归的获取当前方法的完整opcode执行序列，算法：在二叉树上的中、右、左遍历（为了避免循环调用对当前方法的影响，删除会循环调用边）
+
+    注意：并不是调用路径中一个方法只能出现一次，只要不会出现循环调用，可以多次调用同一个方法，比如某个tool方法，设置route_node_list来记录。
+    """
     # 该算法较复杂，需要实际验证是否正确
     method_name = node[: node.rfind("_")]
 
@@ -614,8 +623,12 @@ def get_method_action(
 
 
 # 实现获取指定方法列表中每个方法的完整opcode执行序列
-def get_methods_action(method_list, node_dict):
-    method_action_dict = {}
+def get_methods_action(method_list: Set[str], node_dict: Dict[str, List[str]]):
+    """
+    遍历 method_list, 从 method + '_1': method in method_list 作为遍历起点，通过 get_method_action 获取 method 的完整 opcode 执行序列。
+    return {method : opcode seq}
+    """
+    method_action_dict: Dict[str, str] = {}
 
     for method in method_list:
         get_method_action(method + "_1", node_dict, method_action_dict, set(), 0)
@@ -636,8 +649,8 @@ def fine_match(
     lib_classes_dict = lib_obj.classes_dict
     # 根据粗粒度匹配结果进行细粒度匹配
     # 1、获取所有需要比较的方法opcode执行序列，并记录到自定methods_action = {method_name: opcode_seq}
-    apk_pre_methods = set()
-    lib_pre_methods = set()
+    apk_pre_methods: Set[str] = set()
+    lib_pre_methods: Set[str] = set()
     for lib_class in lib_class_match_dict:
         for apk_class in lib_class_match_dict[lib_class]:
             apk_pre_methods.update(
