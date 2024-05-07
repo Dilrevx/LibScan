@@ -6,7 +6,7 @@ libscan:
   
   args:
     mode: detect_all
-    # output_folder:                 "/home/li/LibScan/result/debugger"
+    output_folder:                 "/home/li/LibScan/result/phunter"
     # apk_folder:                   "/data/phunter/issta23-artifact/dataset/apps_all_option/origin"
 
     # lib_folder:                   "/home/li/LibScan/data/vulnerability_libs"
@@ -16,5 +16,8 @@ libscan:
     process_num:                  2
 phunter:
   path: /home/li/PHunter
+  android_jar: /data/phunter/issta23-artifact/android-31/android.jar
 dataset:
   CVEs2libsMapping: /home/li/LibScan/tmp/CVEs2libsMapping.json
+  cve_folder: /data/phunter/issta23-artifact/dataset/CVEs
+  apk_folder: /data/phunter/issta23-artifact/dataset/apps_all_option/origin
