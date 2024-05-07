@@ -400,7 +400,7 @@ def coarse_match(
                 if lib_method 与 apk_method 的 descriptor 相等，进行进一步比较。
                 在 match 的前提下（lib_method 的 opcode 均出现于 apk），取 lib_method 与 apk_method 的 argmin( |lib_method_opcode_num - apk_method_opcode_num| ) 作为最佳匹配，记录 lib_method -> apk_method 于 methods_match_dict 中。
 
-            把每个 method 匹配后，计算 sum(apk_class_method.opcode_num) / apk_class.opcode_num。若超过阈值，认为 lib_class 匹配了（多个）apk_class，记录于 match_classes, 并记录 lib_class -> {apk_class -> methods_match_dict} 于 lib_class_match_dict 中。
+            把每个 method 匹配后，计算 sum(apk_class_method.opcode_num) / apk_class.opcode_num。**若按该 APK 公式计算的比率**超过阈值 class_similar，认为 lib_class 匹配了（多个）apk_class，记录于 match_classes, 并记录 lib_class -> {apk_class -> methods_match_dict} 于 lib_class_match_dict 中。
 
     返回 lib_match_classes, abstract_lib_match_classes, lib_class_match_dict
     """
@@ -787,6 +787,8 @@ def detect(
     lib_match_classes, abstract_lib_match_classes, lib_class_match_dict = coarse_match(
         apk_obj, lib_obj, filter_result, opcode_dict
     )
+
+    # DEBUG
     for lib_class in lib_class_match_dict:
         if len(lib_class_match_dict[lib_class]) > 1:
             LOGGER.debug("粗粒度匹配lib_class: %s", lib_class)
