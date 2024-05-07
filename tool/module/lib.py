@@ -36,7 +36,8 @@ class ThirdLib(object):
         # 后续用于匹配的库信息
         self.lib_opcode_num = int()  # 库中的opcode数量之和
         self.classes_dict: Dict[
-            str, Tuple[str, int, int, Dict[int, bool], Dict[str, list]]
+            str,
+            Tuple[str, int, int, Dict[int, int], Dict[str, Tuple[str, str, int, str]]],
         ] = (
             dict()
         )  # 记录库中的所有类信息. str -> hash, method_num, cls_opcode_num, class_filter, cls_method_info_dict. 当 cls 是 interface 时，-> cls_method_num, class_filter

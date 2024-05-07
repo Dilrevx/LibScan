@@ -75,7 +75,7 @@ def get_opcode_coding(path):
     """
     打开 `conf/opcodes_encoding`，读取 opcode 及对应编号(编号从1到232)
     """
-    opcode_dict = {}
+    opcode_dict: Dict[str, str] = {}
     with open(path, "r", encoding="utf-8") as file:
         for line in file.readlines():
             line = line.strip("\n")
@@ -200,7 +200,10 @@ def get_lib_info(
     loop_dependence_libs: List[str],
 ) -> ThirdLib:
     """
-    将调用库的node_dict合并到当前库的node_dict中
+    修改 cur_libs，global_lib_info_dict
+    将调用库的node_dict合并到当前 lib_obj 的node_dict中，并返回 lib_obj.node_dict
+
+    解析依赖关系，将非循环的依赖库按照是否已分析过分别加入 dependence_libs / cur_lib。对于已分析的 lib_name, 通过本函数递归地得到 lib_obj, 并将其 node_dict 合并到当前 lib_obj 的 node_dict 中。
     """
     if lib in cur_libs:
         return []  # ? why not None
@@ -288,11 +291,12 @@ def deal_bloom_filter(
     app_filter: Dict[str, Tuple[Set[str], Set, Set, Set, Set, Set, Set, Set, Set, Set]],
 ) -> Set[str]:
     """
-    :lib_classes_dict: 记录库中的所有类信息. str -> hash, method_num, cls_opcode_num, class_filter, cls_method_info_dict. 当 cls 是 interface 时，-> cls_method_num, class_filter. 其中 cls_filter maps int -> bool
+    :lib_classes_dict: 记录库中的所有类信息. str -> hash, method_num, cls_opcode_num, class_filter, cls_method_info_dict. 当 cls 是 interface 时，-> cls_method_num, class_filter.
     :app_filter: class_filter 的特征编号 -> [Set[class_names]] * 10. value 的 index 表示 count -1 个 特征的类集合
 
+    其中 cls_filter maps int -> int，表示编号为 int 的特征在 cls 中出现的次数。
 
-    过滤库中由 cls_name 指定的 cls 中，与 apk 特征匹配的 methods。
+    过滤库中由 cls_name 指定的 cls 中，特征匹配的 apk.cls
 
     返回 Set[class_names] eg. {"org.apache.commons.collections4.Equator"}
     """
@@ -321,14 +325,21 @@ def deal_bloom_filter(
 
 
 # 处理得到apk所有类中每个类的过滤结果集，记录在filter_result字典中，并统计过滤效果信息
-def pre_match(apk_obj: Apk, lib_obj: ThirdLib):
+def pre_match(apk_obj: Apk, lib_obj: ThirdLib) -> Dict[str, Set[str]]:
+    """
+    执行 `pre_match`: 要求 lib.cls 与 apk.cls 具有相同的 signature，找到 lib 中能 match apk 的所有 lib.cls.
+
+    对于每个 lib_name.cls_name, 返回 APK 中与 lib_name.cls_name 可能 matched 的所有 apk.cls
+
+    returns: Dict[lib.cls_name, Set[apk.cls_name]]
+    """
     succ_filter_num = 0
     lib_filter_set_sum = 0
 
     lib_classes_dict = lib_obj.classes_dict
     app_filter = apk_obj.app_filter
 
-    filter_result = {}
+    filter_result: Dict[str, Set[str]] = {}
     for lib_class_name in lib_classes_dict:
 
         satisfy_classes = deal_bloom_filter(
@@ -352,9 +363,12 @@ def pre_match(apk_obj: Apk, lib_obj: ThirdLib):
     return filter_result
 
 
-# 采用包含的方式来判断匹配，是为了抵御控制流随机化，插入无效代码、部分代码位置随机化等
-def match(apk_method_opcode_list, lib_method_opcode_list, opcode_dict):
-    # 通过过滤器的方式检测apk方法与lib方法是否匹配(库中方法的opcode必须存在于apk方法中）
+def match(apk_method_opcode_list, lib_method_opcode_list, opcode_dict) -> bool:
+    """
+    通过过滤器的方式检测apk方法与lib方法是否匹配(库中方法的opcode必须存在于apk方法中）
+
+    采用包含的方式来判断匹配，是为了抵御控制流随机化，插入无效代码、部分代码位置随机化等
+    """
     # 先使用apk方法设置过滤器的每一位
     method_bloom_filter = {}
     for opcode in apk_method_opcode_list:
@@ -369,13 +383,34 @@ def match(apk_method_opcode_list, lib_method_opcode_list, opcode_dict):
 
 
 # 进行apk与某个lib的粗粒度匹配，得到粗粒度相似度值、所有完成匹配的apk类列表
-def coarse_match(apk_obj, lib_obj, filter_result, opcode_dict):
+def coarse_match(
+    apk_obj: Apk,
+    lib_obj: ThirdLib,
+    filter_result: Dict[str, Set[str]],
+    opcode_dict: Dict[str, str],
+):
+    """
+    :filter_result: Dict[lib.cls_name, Set[apk.cls_name]], apk 中，与固定 lib.cls_name 匹配的所有 apk.cls_name
+    :opcode_dict: opcode -> int
+
+    for lib_class:  for apk_class:
+        if abstract, 只要 lib_cls 和 apk_cls 的 method_num 相等，就匹配
+        else:
+            for lib_method: for apk_method:
+                if lib_method 与 apk_method 的 descriptor 相等，进行进一步比较。
+                在 match 的前提下（lib_method 的 opcode 均出现于 apk），取 lib_method 与 apk_method 的 argmin( |lib_method_opcode_num - apk_method_opcode_num| ) 作为最佳匹配，记录 lib_method -> apk_method 于 methods_match_dict 中。
+
+            把每个 method 匹配后，计算 sum(apk_class_method.opcode_num) / apk_class.opcode_num。若超过阈值，认为 lib_class 匹配了（多个）apk_class，记录于 match_classes, 并记录 lib_class -> {apk_class -> methods_match_dict} 于 lib_class_match_dict 中。
+
+    返回 lib_match_classes, abstract_lib_match_classes, lib_class_match_dict
+    """
+
     # 记录每个粗粒度匹配的类中具体方法的匹配关系，用于后面细粒度确定这些方法是否是真实的匹配。
     # apk_class_methods_match_dict = {}
-    lib_class_match_dict = {}
-    lib_match_classes = set()  # 用于计算lib的粗粒度匹配得分
-    abstract_lib_match_classes = set()
-    abstract_apk_match_classes = set()
+    lib_class_match_dict: Dict[str, Dict[str, Dict[str, str]]] = {}
+    lib_match_classes: Set[str] = set()  # 用于计算lib的粗粒度匹配得分
+    abstract_lib_match_classes: Set[str] = set()
+    abstract_apk_match_classes: Set[str] = set()
 
     # 取出粗粒度匹配需要使用的数据
     lib_classes_dict = lib_obj.classes_dict
@@ -386,13 +421,15 @@ def coarse_match(apk_obj, lib_obj, filter_result, opcode_dict):
         if lib_class not in filter_result:
             continue
 
-        class_match_dict = {}
+        class_match_dict: Dict[str, Dict[str, str]] = (
+            {}
+        )  # apk_class -> methods_match_dict = {lib.method -> apk.method}
 
         filter_set = filter_result[
             lib_class
         ]  # 注意，从布隆过滤器得到的lib类可能不存在于lib_classes_dict中
 
-        # 记录apk中所有被匹配的抽象类或者接口（直接视为最终匹配）, 不考虑apk与lib中没有具体方法实现的接口或抽象类的匹配
+        # 记录apk中所有被匹配的抽象类或者接口（直接视为最终匹配）, 不考虑apk与lib中没有具体方法实现的接口或抽象类的匹配。将抽象类的包名.cls 记录到 abstract_*_match_classes 中
         if (
             len(lib_classes_dict[lib_class]) == 2
         ):  # 说明是lib中无方法实现的抽象类或者接口
@@ -432,9 +469,19 @@ def coarse_match(apk_obj, lib_obj, filter_result, opcode_dict):
                 continue
 
             # 进行类中方法的一对一匹配，目的是得到lib类中所有完成一对一匹配的方法（每次寻找最大相似度匹配）
-            methods_match_dict = {}  # 用于记录apk中类方法与对应的lib类方法匹配关系
+            methods_match_dict: Dict[str, str] = (
+                {}
+            )  # 用于记录apk中类方法与对应的lib类方法匹配关系 lib.method -> apk.method
             apk_class_methods_dict = apk_classes_dict[apk_class][3]
             lib_class_methods_dict = lib_classes_dict[lib_class][4]
+
+            """
+            class_methods_dict: method_name -> [hash, opcode_seq, opcode_num, descriptor]
+
+            opcode_seq: 'op1 op2 op3'
+            descriptor: static, (ret type), param-type-list
+            """
+
             apk_match_methods = []  # 保证apk类中的方法不会被重复匹配
             for lib_method in lib_class_methods_dict:
 
@@ -691,6 +738,11 @@ def detect(
     # 检测库平均用时
     avg_time = 0
 
+    """
+    THRESHOLD
+
+    计算 TPL 与 apk 之间 pre-match 的 threshold
+    """
     # 通过过滤器为库中的每个类找出app中的潜在匹配类集合
     filter_result = pre_match(apk_obj, lib_obj)
     pre_match_opcodes = 0
@@ -858,6 +910,7 @@ def detect_lib(
     loop_dependence_libs,
 ) -> Tuple[Dict[Apk, Tuple[str, str, str, str, str]], bool]:
     """
+    :libs_name: List[str]. 记录同个包不同版本的库名
     :global_jar_dict: Dict[str, List[str]]. 记录同个包不同版本 <包名>:<文件名> 的映射
     :global_finished_jar_dict: Dict[str, Tuple[str, float]]. 记录 <文件名>:<检测结果> 的映射，检测结果为 （库包名，库得分）
     :global_running_jar_list: List[str]. 记录正在检测的库

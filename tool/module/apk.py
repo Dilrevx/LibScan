@@ -23,7 +23,11 @@ class Apk(object):
         self.apk_name = None  # 库文件名
 
         # 后续用于匹配的库信息
-        self.classes_dict = dict()  # 记录apk中的所有类信息
+        self.classes_dict: Dict[
+            str, Tuple[str, int, int, Dict[str, Tuple[str, str, int, str]]]
+        ] = (
+            dict()
+        )  # 记录apk中的所有类信息. hash, method_num, cls_opcode_num,  cls_method_info_dict. interface 的 len = 1
         self.nodes_dict = dict()  # 记录方法内的每一个节点信息
         self.app_filter: Dict[
             str, Tuple[Set[str], Set, Set, Set, Set, Set, Set, Set, Set, Set]
