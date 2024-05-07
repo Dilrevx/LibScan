@@ -624,7 +624,12 @@ def get_methods_action(method_list, node_dict):
 
 
 # 细粒度匹配
-def fine_match(apk_obj, lib_obj, lib_class_match_dict, opcode_dict):
+def fine_match(
+    apk_obj: Apk,
+    lib_obj: ThirdLib,
+    lib_class_match_dict: Dict[str, Dict[str, Dict[str, str]]],
+    opcode_dict: Dict[str, str],
+):
     apk_nodes_dict = apk_obj.nodes_dict
     lib_nodes_dict = lib_obj.nodes_dict
     apk_classes_dict = apk_obj.classes_dict
@@ -647,10 +652,10 @@ def fine_match(apk_obj, lib_obj, lib_class_match_dict, opcode_dict):
     lib_methods_action = get_methods_action(lib_pre_methods, lib_nodes_dict)
     LOGGER.debug("方法完整路径获取完成...")
 
-    lib_class_match_result = (
+    lib_class_match_result: Dict[str, Tuple[str, int]] = (
         {}
     )  # 键为lib类名，值为列表，包含当前细粒度匹配的apk类、类中细粒度匹配的方法数、类中所有方法细粒度匹配得分之和
-    finish_apk_classes = []
+    finish_apk_classes: List[str] = []
     for lib_class in lib_class_match_dict:
         max_match_class_opcodes = 0  # 记录最大得分情况下的库中方法的opcode数量之和
         # 在库类被匹配方法opcode数量相同时，为了找出最佳匹配的apk类，记录类中所有匹配的方法完整opcode序列去重后的差值之和，将方法差值之和最小的视为最佳匹配
@@ -809,6 +814,11 @@ def detect(
             lib_classes_dict[abstract_class][0] * abstract_method_weight
         )
 
+    """
+    THRESHOLD
+    
+    这里按 lib 计算，和 lib_similar 比较，前面按 APK 比较
+    """
     # 计算lib粗粒度匹配得分
     lib_coarse_match_opcode_num = 0
     for lib_class in lib_match_classes:
