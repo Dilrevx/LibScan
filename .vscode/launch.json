@@ -54,7 +54,8 @@
             "cwd": "/home/li/LibScan/tool",
             "env": {
                 "PATH": "${env:PATH}:/home/li/LibScan/tmp/dex-tools-v2.4"
-            }
-        }
-    ]
+            },
+            "preLaunchTask": "clean-garbage"
+        },
+    ],
 }
