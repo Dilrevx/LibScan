@@ -11,6 +11,24 @@ CHECK_PHUNTER_MISSING_LIBS = "/home/li/LibScan/tmp/phunter_missing.txt"
 
 
 class MetaPHunterGT:
+    cve2Meta: Dict[str, "MetaPHunterGT"] = dict()
+    lib2cve: Dict[str, str] = dict()
+
+    @classmethod
+    def _init_lib2cve(cls, cve2lib: Dict[str, str]):
+        for cve, lib in cve2lib.items():
+            lib = lib.replace(".jar", ".dex", 1)
+            cls.lib2cve[lib] = cve
+
+    @classmethod
+    def from_cve(cls, cve: str) -> "MetaPHunterGT":
+        return cls.cve2Meta[cve]
+
+    @classmethod
+    def from_pre_lib(cls, lib: str) -> "MetaPHunterGT":
+        assert cls.lib2cve, "call _init_lib2cve first"
+        return cls.cve2Meta[cls.lib2cve[lib]]
+
     def __init__(
         self,
         short_name="",
@@ -26,6 +44,10 @@ class MetaPHunterGT:
         self.post_version = post_version
         self.is_patched = is_patched
         self.internal_full_name = internal_full_name
+        MetaPHunterGT.cve2Meta[cve] = self
+
+    def __str__(self) -> str:
+        return f"{self.cve} {self.internal_full_name} {self.is_patched}"
 
 
 def _get_phunter_ground_truth() -> Dict[str, List[MetaPHunterGT]]:
@@ -97,7 +119,7 @@ class LibScanTruePositive:
 
     def __init__(self, apk_name: str) -> None:
         self.apk_name = apk_name
-        self._tp_libs: Set[Tuple[str, float]] = set()
+        self._tp_libs: Set[Tuple[MetaPHunterGT, float]] = set()
 
     def tp_libs(self):
         return self._tp_libs
@@ -213,7 +235,9 @@ class LibScanResultParser:
                 if not gt:
                     fp_obj.fp_libs().add((res_lib_name, similarity))
                 else:
-                    tp_obj.tp_libs().add((res_lib_name, similarity))
+                    tp_obj.tp_libs().add(
+                        (MetaPHunterGT.from_pre_lib(res_lib_name), similarity)
+                    )
 
             ret[apk_name] = (tp_obj, fp_obj)
         return ret
@@ -225,6 +249,7 @@ if __name__ == "__main__":
 
     cve2lib = json.load(open(PHUNTER_DATA_MAPPING))
     phunter_ground_truths = _get_phunter_ground_truth()
+    MetaPHunterGT._init_lib2cve(cve2lib)
 
     apk2gt_fp = parser.check_result_with_phunter_GT(phunter_ground_truths, cve2lib)
 
