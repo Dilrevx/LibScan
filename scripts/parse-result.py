@@ -15,7 +15,7 @@ class LibScanResultParser:
         result: Dict[str, Tuple[str, float]]
             .apk -> (libname.dex, similarity)
         """
-        self.result: Dict[str, Tuple[str, float]] = defaultdict(
+        self.result: Dict[str, Tuple[str, float]] = dict(
             tuple
         )  # .apk -> (libname.dex, similarity)
         for filename in os.listdir(dirpath):
